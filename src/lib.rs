@@ -52,7 +52,7 @@ enum ChangeChannelMessage<T> {
     Change(Arc<T>),
 }
 
-impl<T: std::fmt::Debug + Clone + Send + Sync + 'static> ChangeChannel<T> {
+impl<T: Clone + Send + Sync + 'static> ChangeChannel<T> {
     pub fn new(item: T) -> Self {
         let (change_send, change_receive) = mpsc::channel();
         let rw_lock = Arc::new(RwLock::new(item));
