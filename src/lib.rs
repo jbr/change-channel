@@ -114,7 +114,7 @@ mod tests {
         let values_seen = Arc::new(Mutex::new(vec![]));
 
         let values_seen_for_thread = values_seen.clone();
-        cc.register(move |value| values_seen_for_thread.lock().unwrap().push(value.clone()));
+        cc.register(move |value| values_seen_for_thread.lock().unwrap().push(*value));
 
         assert_eq!(*values_seen.lock().unwrap(), vec![0]);
 
