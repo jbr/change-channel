@@ -1,17 +1,18 @@
 use delegate::delegate;
 use std::ops::{Deref, DerefMut};
-use std::sync::{Mutex, Arc, mpsc, LockResult, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{
+    mpsc, Arc, LockResult, Mutex, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard,
+};
 
 pub struct ChangeChannel<T: Sized + Clone> {
     rw_lock: Arc<RwLock<T>>,
     change_send: mpsc::Sender<ChangeChannelMessage<T>>,
     listeners: Arc<Mutex<Vec<Box<dyn Fn(&T) -> () + Send>>>>,
-    pub thread_handle: Option<std::thread::JoinHandle<()>>
+    pub thread_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 unsafe impl<T: Sized + Send + Clone> Send for ChangeChannel<T> {}
 unsafe impl<T: Sized + Send + Sync + Clone> Sync for ChangeChannel<T> {}
-
 
 pub struct CCWriteLockGuard<'a, T: Clone + Sized + 'a> {
     send: mpsc::Sender<ChangeChannelMessage<T>>,
@@ -20,7 +21,11 @@ pub struct CCWriteLockGuard<'a, T: Clone + Sized + 'a> {
 
 impl<T: Sized + Clone> Drop for CCWriteLockGuard<'_, T> {
     fn drop(&mut self) {
-        self.send.send(ChangeChannelMessage::Change(Arc::new(self.rw_guard.clone()))).ok();
+        self.send
+            .send(ChangeChannelMessage::Change(Arc::new(
+                self.rw_guard.clone(),
+            )))
+            .ok();
         std::mem::drop(&self.rw_guard);
     }
 }
@@ -53,20 +58,17 @@ impl<T: std::fmt::Debug + Clone + Send + Sync + 'static> ChangeChannel<T> {
         let rw_lock = Arc::new(RwLock::new(item));
         let listeners: Arc<Mutex<Vec<Box<dyn Fn(&T) -> () + Send>>>> = Arc::new(Mutex::new(vec![]));
 
-
         let listeners_for_thread = listeners.clone();
 
-        let thread_handle = std::thread::spawn(move || {
-            loop {
-                match change_receive.recv() {
-                    Ok(ChangeChannelMessage::Shutdown) => break,
-                    Ok(ChangeChannelMessage::Change(new_value)) => {
-                        for listener in &*listeners_for_thread.lock().unwrap() {
-                            listener(&*new_value)
-                        }
-                    },
-                    Err(_) => ()
+        let thread_handle = std::thread::spawn(move || loop {
+            match change_receive.recv() {
+                Ok(ChangeChannelMessage::Shutdown) => break,
+                Ok(ChangeChannelMessage::Change(new_value)) => {
+                    for listener in &*listeners_for_thread.lock().unwrap() {
+                        listener(&*new_value)
+                    }
                 }
+                Err(_) => (),
             }
         });
 
@@ -74,12 +76,11 @@ impl<T: std::fmt::Debug + Clone + Send + Sync + 'static> ChangeChannel<T> {
             rw_lock,
             change_send,
             listeners,
-            thread_handle: Some(thread_handle)
+            thread_handle: Some(thread_handle),
         }
-
     }
 
-    pub fn register<F: Fn(&T) -> () + Send + 'static>(&self, listener:F) {
+    pub fn register<F: Fn(&T) -> () + Send + 'static>(&self, listener: F) {
         listener(&*self.read().unwrap());
         self.listeners.lock().unwrap().push(Box::new(listener));
     }
@@ -104,7 +105,6 @@ impl<T: Sized + Clone> Drop for ChangeChannel<T> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,9 +114,7 @@ mod tests {
         let values_seen = Arc::new(Mutex::new(vec![]));
 
         let values_seen_for_thread = values_seen.clone();
-        cc.register(move |value| 
-            values_seen_for_thread.lock().unwrap().push(value.clone())
-        );
+        cc.register(move |value| values_seen_for_thread.lock().unwrap().push(value.clone()));
 
         assert_eq!(*values_seen.lock().unwrap(), vec![0]);
 
